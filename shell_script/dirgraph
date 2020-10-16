@@ -1,0 +1,237 @@
+#!/usr/bin/env bash
+
+# Roman Stepaniuk xstepa64
+
+POSIXLY_CORRECT=yes
+
+NF=0  # quantity of files
+ND=0  # quantity pf directories
+DIR=$(pwd) # current path
+regex='' # variable for regex [string]
+regex_param=0 # if regex exists, regex_param=1, else regex_param=0
+mr_count=(0 0 0 0 0 0 0 0 0) # array of hastag counters
+mr=('' '' '' '' '' '' '' '' '') # array for stdout (hashtag)
+NORMALIZATION=0 
+dir_error=0 # quantity of nonreadable directories
+
+# stderr function
+error_str()
+{
+        echo "use: [-i FILE_ERE] [-n] [DIR]" >&2
+        exit 1 # error finish
+}
+
+#################################################### DIFFERENT CONDITIONS ###############################################
+
+# getops function to work with options
+while getopts i:n opt;do
+        case "$opt" in
+                i)
+                        regex="$OPTARG" # variable following option -i
+                        regex_param=1   # variable for check regex in cyckle
+                        ;;
+                n)
+                        NORMALIZATION=1
+                        ;;
+                *)
+                        error_str # stderr function
+                        ;;
+        esac
+done
+
+# shift arguments
+shift $(( --OPTIND ))
+
+# there are too many arguments
+if [ $# -gt 1 ]
+then
+	        error_str #stderr function
+fi
+
+# $1 conditions
+if [[ $# -eq 1 && -d $1 && -r $1 ]]
+then
+      	DIR="$1"
+elif [[ $# -eq 1 && ! -d $1 ]]
+then
+        echo "$1 isn't directory. Change your arguments." >&2
+        exit 1
+elif [[ $# -eq 1 && -d $1 && ! -r $1 && ! -x $1 ]]
+then
+        echo "Permission denied! $1 is directory without permission." >&2
+        exit 1
+fi
+
+
+# find out if regex covers name of root directory
+if [  -n "$regex"  ]
+then
+        if echo "$DIR" | egrep -q "$regex" 
+        then
+                echo -en "Path: '$DIR'\nFILE_ERE should'n include name of root directory.\n" >&2
+                exit 1
+        fi
+fi
+
+####################################### COUNTING FILES AND DIRECTORIES #########################################
+
+search()
+{
+        for i in `find $DIR 2> /dev/null` # write stderr in /dev/null
+        do
+                param=0 # variable for counting files and dirs without regex
+                if [  $regex_param -eq 1  ] 
+                then
+                        [[ $i =~ $regex ]] && (( param++)) 
+                fi
+                
+                # readable directory which doesn't contain regex
+                if [[  -d $i && -r $i && $param -eq 0  ]]
+                then
+                        (( ND++ ))
+
+                # readable file which doesn't contain regex
+                elif [[ -f $i && $param -eq 0 ]]
+                then 
+                        (( NF++ ))
+                        if [  $(stat -c %s $i) -lt 100  ]
+                        then
+                                (( mr_count[0]++ ))
+                        elif [  $(stat -c %s $i) -lt 1024  ]
+                        then
+                                (( mr_count[1]++ ))
+                        elif [  $(stat -c %s $i) -lt $((10*1024))  ]
+                        then
+                                (( mr_count[2]++ ))
+                        elif [  $(stat -c %s $i) -lt $((100*1024))  ]
+                        then
+                                (( mr_count[3]++ ))
+                        elif [  $(stat -c %s $i) -lt $((1024*1024))  ]
+                        then
+                                (( mr_count[4]++ ))
+                        elif [  $(stat -c %s $i) -lt $((10*1024*1024))  ]
+                        then
+                                (( mr_count[5]++ ))
+                        elif [  $(stat -c %s $i) -lt $((100*1024*1024))  ]
+                        then
+                                (( mr_count[6]++ ))
+                        elif [  $(stat -c %s $i) -lt $((1024*1024*1024))  ]
+                        then
+                                (( mr_count[7]++ ))
+                        elif [  $(stat -c %s $i) -ge $((1024*1024*1024))  ]
+                        then
+                                (( mr_count[8]++ ))
+                        fi
+                # unreadable directory which not contains regex
+                elif [[ ! -r $i && -d $i && $param -eq 0  ]]
+                then
+                        (( dir_error++ ))
+
+                fi
+        done
+}
+
+#################################### MAXIMUM HASHTAG COUNTER ##########################
+
+max()
+{
+        max_hashtag_value=-99 # variable for max hashtag counter
+        mr_index_number=0 # index of max hashtag counter in array
+        y=0
+        # cycle for find max hastag counter
+        while [  $y -lt 9  ]
+        do
+                if [  ${mr_count[$y]} -gt $max_hashtag_value  ] 
+                then
+                        max_hashtag_value=${mr_count[$y]}
+                        mr_index_number=$y
+                fi
+                (( y++ ))
+        done
+}
+
+################################################## NORMALIZATION ################################################################
+
+normalize()
+{
+        # if terminal is opened
+        if test -t 1
+        then
+                num_hashtag=$(tput cols) # variable for max hashtag length when normalization is working
+                num_hashtag=$(( $num_hashtag - 13  ))
+        # if it isn't terminal
+        else
+                num_hashtag=$(( 79 - 12 ))
+        fi
+        max # find max hashtag counter
+        # if max hashtag counter is greater than 
+        if [[ $max_hashtag_value -gt $num_hashtag ]]
+        then
+                y=0
+                while [  $y -lt 9  ]
+                do
+                        # if quantity of hashtags in array[index]  not equal maximum quantity of hashtags -> array[index] = array[index] * max hashtag length (normalization) / maximum quanity of hashtags
+                        if [  ${mr_count[y]} -ne $max_hashtag_value  ]
+                        then
+                                
+                                mr_count[$y]=$(( ${mr_count[$y]} * $num_hashtag / $max_hashtag_value )) # len of hashtag in arr[y]
+                        # else array[index] = max hashtag length (normalization)
+                        else
+                                mr_count[$y]=$num_hashtag
+                        fi
+                        (( y++ ))
+                done
+        fi
+
+}
+
+# function for printing hashtags
+print_hash()
+{
+        y=0
+        while [  $y -lt 9  ]
+        do
+                i=0
+                while [  $i -lt ${mr_count[$y]}  ]
+                do
+                        mr[$y]=${mr[$y]}"#"
+                        (( i++ ))
+                done
+
+                (( y++ ))
+        done
+}
+
+search # main function for searching files and directories
+
+# if normalization is turned on
+if [  $NORMALIZATION -eq 1  ]
+then
+        normalize # normalization function
+fi
+
+print_hash # function for printing hashtags
+
+# main stdout
+echo "Root directory: $DIR"
+echo "Directories: $ND"
+echo "All files: $NF"
+
+echo "File size histogram:"
+echo "  <100 B  : ${mr[0]}"
+echo "  <1 KiB  : ${mr[1]}"
+echo "  <10KiB  : ${mr[2]}"
+echo "  <100 KiB: ${mr[3]}"
+echo "  <1MiB   : ${mr[4]}"
+echo "  <10MiB  : ${mr[5]}"
+echo "  <100 MiB: ${mr[6]}"
+echo "  <1GiB   : ${mr[7]}"
+echo "  >=1GiB  : ${mr[8]}"
+
+# if there were unreadable files or derictories in search -> stderr
+if [[  $dir_error -gt 0  ]]
+then
+        echo "ERROR: '$dir_error' directories were found without permission! (-r)" >&2
+        exit 1 # error finish
+fi
+exit 0 # normal finish of script

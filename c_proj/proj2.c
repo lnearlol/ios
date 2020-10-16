@@ -1,361 +1,373 @@
 #include "proj2.h"
+FILE *file;
 
+/*
+	-PI je pocet procesu vygenerovanych v kategorii imm;
 
-void struct_unmap()
-{
-  munmap(shared, sizeof(int)*15);
-}
+ 	-IG je max hodnota doby (v milisekundech), po ktere je generovan novy proces immigrant.
 
-void file_close(FILE *file_ptr)
-{
-  fclose(file_ptr); // zavirani file
-}
+ 	-JG je max hodnota doby (v milisekundech), po ktere soudce opet vstoupi do budovy.
 
-void semaphore_destruct()
-{
-  sem_unlink("xstepa64_vypis");
-  sem_close(VYPIS);
-  sem_unlink("xstepa64_jwait");
-  sem_close(JWAIT_SEM);
-  sem_unlink("xstepa64_dec");
-  sem_close(DECISION_SEM);
-  sem_unlink("xstepa64_q");
-  sem_close(QUEUE_SEM);
-  sem_unlink("xstepa64_j");
-  sem_close(JUDGE_SEM);
-  sem_unlink("xstepa64");
-  sem_close(MAIN_PROC_SEM);
-}
+ 	-IT je max hodnota doby (v milisekundech), ktera simuluje trvani vyzvedavani certifikatu imm.
 
-int kontrola_argumentu(int argc, char *argv[], int kontrola_vstupu)
-{
-  if(argc != 6)
-  { 
-     kontrola_vstupu++;
-  } else
-  {
-    if(atoi(argv[1]) < 1) //kontrolujeme hodnoty argumentu
-    {
-       kontrola_vstupu++;
-    } else 
-    {  
-     for (int i = 1; i <= 5; i++)
-      {
-        char *sym_var = NULL;
-        double value = strtod(argv[i], &sym_var); //kontrolujeme na cokoliv krome cislovych hodnot
-        if(*sym_var != '\0')
-         kontrola_vstupu++;
-         
-        if((value < 0 || value > 2000) && i > 1) //kontrola na zaporne hodnoty
-          kontrola_vstupu++; 
-         
-         if(atoi(argv[i]) != atof(argv[i]))
-           kontrola_vstupu++;      
-      }
-    }
-  }
-  return kontrola_vstupu;
-}
+ 	-JT je max hodnota doby (v milisekundech), ktera simuluje trvani vydavani rozhodnuti soudcem.
+*/
 
-int process_error()
-{
-   perror("Process error!\n"); //vypis chybneho vstupu
-   exit(EXIT_FAILURE);
-}
+/*
+	NE je pocet imm, kteri vstoupili do budovy a dosud o nich nebylo rozhodnuto
+	NC je pocet imm, kteri se zaregistrovali a dosud o nich nebylo rozhodnuto
+	NB je pocet imm, kteri jsou v budove
 
-void soudce(int argc, char *argv[], FILE *file_ptr)
-{
-  
-  while (shared->i_decided < atoi(argv[1]))
-  {
-    int flag = 0;       // promenna pro check NC po kazdem cyklu JUDGE
-    srand(time(NULL));
-    usleep((rand() % (atoi(argv[3])+1)) * 1000);
+*/
 
-    sem_wait(VYPIS);
-    fprintf(file_ptr, "%5d : JUDGE    : wants to enter\n", shared->counter+=1);
-    sem_post(VYPIS);
-    sem_wait(JUDGE_SEM);
-
-    sem_wait(VYPIS);  
-    shared->NE= shared->i_enter - shared->i_decided;   
-    shared->NC= shared->i_check - shared->i_decided;
-    shared->NB= shared->i_enter - shared->i_out;
+int control_letters ( char * argv[] ){   
+	char * ptrEnd = NULL;
     
-    fprintf(file_ptr, "%5d : JUDGE    : enters                : %2d : %2d : %2d\n", shared->counter+=1, shared->NE, shared->NC, shared->NB);
-    sem_post(VYPIS);
-    sem_wait(VYPIS);
-    if(shared->NE != shared->NC)
-    {
-      shared->judge_wait = 1;
-      
-      fprintf(file_ptr, "%5d : JUDGE    : waits for imm	 : %2d : %2d : %2d\n", shared->counter+=1, shared->NE, shared->NC, shared->NB);
-      sem_post(VYPIS);
-      sem_wait(JWAIT_SEM);
-    } else
-    {
-      sem_post(VYPIS);
-    }
-
-    shared->NE= shared->i_enter - shared->i_decided;
-    shared->NC= shared->i_check - shared->i_decided;
-    shared->NB= shared->i_enter - shared->i_out;
-    sem_wait(VYPIS);
-    fprintf(file_ptr, "%5d : JUDGE    : starts confirmation   : %2d : %2d : %2d\n", shared->counter+=1, shared->NE, shared->NC, shared->NB);
-    sem_post(VYPIS);
-    srand(time(NULL));
-    usleep((rand() % (atoi(argv[5])+1)) * 1000);
-    sem_wait(VYPIS);
-    if(shared->i_w_s == 0)
-    {
-      flag = 1;  // judge opens semaphore only when shared->i_w_s
-    } else 
-    {
-      flag = 0;
-    }
-    shared->i_w_s = shared->i_w_s + shared->NC; // inkrementujeme mnozstvi lidi ktere budou zadat o sertifikat
-    shared->i_decided = shared->i_check;
-    
-    shared->NE= shared->i_enter - shared->i_decided;
-    shared->NC= shared->i_check - shared->i_decided;
-    shared->NB= shared->i_enter - shared->i_out;
-    sem_post(VYPIS);
-    sem_wait(VYPIS);
-    fprintf(file_ptr, "%5d : JUDGE    : ends confirmation     : %2d : %2d : %2d\n", shared->counter+=1, shared->NE, shared->NC, shared->NB);
-    sem_post(VYPIS);
-    if (shared->i_w_s > 0 && flag == 1)
-      sem_post(DECISION_SEM);
-    
-
-
-    srand(time(NULL));
-    usleep((rand() % (atoi(argv[5])+1)) * 1000);
-    sem_wait(VYPIS);
-    shared->NE= shared->i_enter - shared->i_decided;
-    shared->NC= shared->i_check - shared->i_decided;
-    shared->NB= shared->i_enter - shared->i_out;
-    fprintf(file_ptr, "%5d : JUDGE    : leaves                : %2d : %2d : %2d\n", shared->counter+=1, shared->NE, shared->NC, shared->NB);
-    sem_post(VYPIS);
-    sem_post(JUDGE_SEM);
-  } 
-    sem_wait(VYPIS);
-    fprintf(file_ptr, "%5d : JUDGE    : finishes\n", shared->counter+=1);
-    sem_post(VYPIS);
-
-  sem_wait(VYPIS);
-  shared->main_proc_counter+=1;
-
-  if(shared->main_proc_counter == 0)
-    {
-      sem_post(MAIN_PROC_SEM);
-    }
-    sem_post(VYPIS);
-
-  if (shared->exit_code == 1)
-  {
-    exit(EXIT_FAILURE);
-  }
-  exit(0);
+	for(int c = 1; c < 6 ; c++){		
+		
+		double zk = strtod (argv[c], &ptrEnd);
+       
+		if (*ptrEnd!='\0'){
+			return 1;
+		}
+   	
+    } 
+	return 0;
 }
 
-void generator(int argc, char *argv[], FILE *file_ptr)
-{ 
-  
-  pid_t pid = getpid();
 
-  for(int i = 0; i < atoi(argv[1]); i++)
-  {
-    srand(time(NULL));
-    usleep((rand() % (atoi(argv[2])+1)) * 1000);
-    if(pid != 0)
-      pid = fork();
-    if (pid < 0)
-    {
-      fprintf(stderr, "fork error\n");
-      exit(1);
-    }
-    else if (pid == 0)
-      initial(argc, argv, file_ptr);
-  }
-  
 
-  sem_wait(VYPIS);
-  shared->main_proc_counter+=1;
-  if(shared->main_proc_counter == 0)
-    {
-      sem_post(MAIN_PROC_SEM);
-    }
-    sem_post(VYPIS);
-  if (shared->exit_code == 1)
-  {
-    exit(EXIT_FAILURE);
-  }
-  exit(0);
+void dtor(){
+	munmap(srk, 14*sizeof(int));
 }
 
-void initial(int argc, char *argv[], FILE *file_ptr)
-{
-  shared->i_start = shared->i_start + 1;
-  sem_wait(VYPIS);
-  fprintf(file_ptr, "%5d : IMM %2d   : starts\n", shared->counter+=1, shared->i_start);
-   sem_post(VYPIS);
-
-  sem_wait(JUDGE_SEM);
-  shared->i_enter = shared->i_enter + 1;
-  shared->NE= shared->i_enter - shared->i_decided;
-  shared->NC= shared->i_check - shared->i_decided;
-  shared->NB= shared->i_enter - shared->i_out;
-  sem_wait(VYPIS);
-  fprintf(file_ptr, "%5d : IMM %2d   : enters                : %2d : %2d : %2d\n", shared->counter+=1, shared->i_enter, shared->NE, shared->NC, shared->NB);
-  sem_post(VYPIS);
-  sem_post(JUDGE_SEM);
-  sem_wait(QUEUE_SEM);
-  
-
-  sem_wait(VYPIS);
-  shared->i_check= shared->i_check + 1;
-  fprintf(file_ptr, "%5d : IMM %2d   : checks                : %2d : %2d : %2d\n", shared->counter+=1, shared->i_check, shared->NE= shared->i_enter - shared->i_decided,  shared->NC= shared->i_check - shared->i_decided, shared->NB= shared->i_enter - shared->i_out);
- 
-  sem_post(VYPIS);
-  sem_post(QUEUE_SEM); 
-  
-  sem_wait(QUEUE_SEM);
-  if (shared->judge_wait == 1 && shared->NE == shared->NC)
-    {
-      shared->judge_wait = 0;
-      sem_post(JWAIT_SEM);
-    }
-  sem_post(QUEUE_SEM);
-
-  sem_wait(DECISION_SEM);    // cekani kdyz soudce otevre semafor pro lidi ktere byly checked a podtvrzeni aby oni mohli vyzvedavat certifikaty
-   shared->i_w_s = shared->i_w_s - 1;
-  if(shared->i_w_s > 0)
-  {  // poustime jen te mnozstvi lidi, ktere maji podtvrzeni od soudce
-    sem_post(DECISION_SEM);
-  }
-  sem_wait(QUEUE_SEM);
-  shared->NE= shared->i_enter - shared->i_decided;
-  shared->NC= shared->i_check - shared->i_decided;
-  shared->NB= shared->i_enter - shared->i_out;
-  sem_wait(VYPIS);
-  fprintf(file_ptr, "%5d : IMM %2d   : wants certificate     : %2d : %2d : %2d\n", shared->counter+=1, shared->i_want = shared->i_want+1, shared->NE, shared->NC, shared->NB);
-  sem_post(VYPIS);
-  sem_post(QUEUE_SEM); 
-  
-  srand(time(NULL));
-  usleep((rand() % (atoi(argv[4])+1)) * 1000);
-  sem_wait(QUEUE_SEM);
-  sem_wait(VYPIS);
-  fprintf(file_ptr, "%5d : IMM %2d   : got certificate       : %2d : %2d : %2d\n", shared->counter+=1, shared->i_get = shared->i_get+1, shared->NE, shared->NC, shared->NB);
-  sem_post(VYPIS);
-  sem_post(QUEUE_SEM); 
-
-  sem_wait(JUDGE_SEM);
-  shared->i_out=shared->i_out+1;
-  shared->NE= shared->i_enter - shared->i_decided;
-  shared->NC= shared->i_check - shared->i_decided;
-  shared->NB= shared->i_enter - shared->i_out;
-  sem_wait(VYPIS);
-  fprintf(file_ptr, "%5d : IMM %2d   : leaves                : %2d : %2d : %2d\n", shared->counter+=1, shared->i_out, shared->NE, shared->NC, shared->NB);
-  sem_post(VYPIS);
-  sem_post(JUDGE_SEM);
-
-  sem_wait(VYPIS);
-  shared->main_proc_counter+= 1;
-  if(shared->main_proc_counter == 0)
-    {
-      sem_post(MAIN_PROC_SEM);
-    }
-    sem_post(VYPIS);
-  if (shared->exit_code == 1)
-  {
-    exit(EXIT_FAILURE);
-  }
-  exit(0);
+void sem_dtor(){
+	
+	sem_wait(sem1);
+	fclose(file);
+	sem_unlink("xstepa64_main_waits");
+	sem_close(sem1);
+	sem_unlink("xstepa64_sem_print");
+	sem_close(print);
+	sem_unlink("xstepa64_judge_enters");
+	sem_close(judge_enters);	
+	sem_unlink("xstepa64_judge_waits");
+	sem_close(judge_waits);
+	sem_unlink("xstepa64_judge_confirms");
+	sem_close(judge_confirms);
+	
 }
 
-int main(int argc, char *argv[])
-{
-  int kontrola_vstupu = 0;
-  kontrola_vstupu = kontrola_argumentu(argc, argv, kontrola_vstupu); // kontrola argumentu
-  if (kontrola_vstupu != 0)
-  {
-    fprintf(stderr, "error: invalid arguments\n"); //vypis chybneho vstupu
-    return 1;
-  }
+void NE_NC_NB(){
+	srk->NE = srk->IMM_ENTERS - srk->registered_imms;
+	srk->NC = srk->IMM_CHECKS - srk->registered_imms;
+	srk->NB = srk->IMM_ENTERS - srk->IMM_LEAVES;
+}
 
-  FILE *file_ptr;
-  file_ptr = fopen("proj2.out", "w");
 
-  setbuf(file_ptr, NULL);
+void vypis_imm (int a){
+	NE_NC_NB();
+	srk->A+=1;
+		
+	if(a == 1){
+		fprintf(file,"%d    : IMM %d        : starts\n",srk->A, srk->IMM_STARTS+=1);
+	}              
+	else if(a == 2){
+		fprintf(file,"%d    : IMM %d        : enters              : %d : %d : %d\n", srk->A, srk->IMM_ENTERS, srk->NE, srk->NC, srk->NB);
+	}
+	else if(a == 3){
+		fprintf(file,"%d    : IMM %d        : checks              : %d : %d : %d\n", srk->A, srk->IMM_CHECKS, srk->NE, srk->NC, srk->NB);
+	}
+	else if(a == 4){
+		fprintf(file,"%d    : IMM %d        : wants certificate              : %d : %d : %d\n", srk->A, srk->IMM_WANTS+=1, srk->NE, srk->NC, srk->NB);
+	}
+	else if(a == 5){
+		fprintf(file,"%d    : IMM %d        : got certificate              : %d : %d : %d\n", srk->A, srk->IMM_GOT+=1, srk->NE, srk->NC, srk->NB);
+	}
+	else if(a == 6){
+		fprintf(file,"%d    : IMM %d        : leaves              : %d : %d : %d\n", srk->A, srk->IMM_LEAVES, srk->NE, srk->NC, srk->NB);
+	}
+}
 
-  if(file_ptr == NULL)
-  {
-    fprintf(stderr, "Unfortunally file was not created.\n");
-    return 1;
-  }
-  /*            ARGUMENTS + FILE CONDITIONS                  */
-  
-  shared = mmap(NULL, sizeof(int)*15, PROT_READ|PROT_WRITE, MAP_SHARED|MAP_ANONYMOUS, -1, 0);
-  if(shared == MAP_FAILED)
-  {
-    struct_unmap();
-    file_close(file_ptr);
-    fprintf(stderr, "Struct mmap error\n");
-    return 1;
-  }
-  shared->main_proc_counter = 1 - (atoi(argv[1]) + 3); // spocita ukoncene processy a pak kdyz vsechno ukonci prijde post na semafor main_procesu a ten se ukonci
+void vypis_j (int a){
+	srk->A+=1;
+	NE_NC_NB();
+	if(a == 1){
+		fprintf(file,"%d    : JUDGE          : wants to enter\n", srk->A);
+	}
+	else if(a == 2){
+		fprintf(file,"%d    : JUDGE          : enters              : %d : %d : %d\n", srk->A, srk->NE, srk->NC, srk->NB);
+	}
+	else if(a == 3){
+		fprintf(file,"%d    : JUDGE          : waits for imm              : %d : %d : %d\n", srk->A, srk->NE, srk->NC, srk->NB);
+	}
+	else if(a == 4){
+		fprintf(file,"%d    : JUDGE          : starts confirmation              : %d : %d : %d\n", srk->A, srk->NE, srk->NC, srk->NB);
+	}
+	else if(a == 5){
+		fprintf(file,"%d    : JUDGE          : ends confirmation              : %d : %d : %d\n", srk->A, srk->NE, srk->NC, srk->NB);
+	}
+	else if(a == 6){
+		fprintf(file,"%d    : JUDGE          : leaves              : %d : %d : %d\n", srk->A, srk->NE, srk->NC, srk->NB);
+	}
+	else if(a == 7){
+		fprintf(file,"%d    : JUDGE          : finishes\n", srk->A);
+	}
+	
+}
 
- 
-  MAIN_PROC_SEM = sem_open("xstepa64", O_CREAT, 0666, 0);
-  JUDGE_SEM = sem_open("xstepa64_j", O_CREAT, 0666, 1);
-  QUEUE_SEM = sem_open("xstepa64_q", O_CREAT, 0666, 1);  //                      
-  DECISION_SEM = sem_open("xstepa64_dec", O_CREAT, 0666, 0);
-  JWAIT_SEM = sem_open("xstepa64_jwait", O_CREAT, 0666, 0);
-  VYPIS = sem_open("xstepa64_vypis", O_CREAT, 0666, 1);
+void zkouska(){
+	srk->dead+=1;
+	int ps = 2 + PI;
+	if( srk->dead == ps ){
+		sem_post(sem1);
+	}
+}
 
-  if(MAIN_PROC_SEM == SEM_FAILED || JUDGE_SEM == SEM_FAILED || QUEUE_SEM == SEM_FAILED|| DECISION_SEM == SEM_FAILED|| JWAIT_SEM == SEM_FAILED|| VYPIS == SEM_FAILED)
-  {
-    struct_unmap();
-    semaphore_destruct();
-    file_close(file_ptr);
-    fprintf(stderr, "error sem_open\n");
-    return 1;
-  }
+void immigrant(){
 
-  pid_t pid = getpid();
+	sem_wait(print);	
+	vypis_imm(1);		//starts
+	sem_post(print);
 
-  pid = fork();
-  if (pid < 0)
-  {
-    shared->exit_code = 1;
-    process_error();
-  }
-  else if (pid == 0)
-    generator(argc, argv, file_ptr);
+	sem_wait(judge_enters);
+	sem_wait(print);
+	srk->IMM_ENTERS+=1;
+	vypis_imm(2);		//enters
+	sem_post(print);
+	sem_post(judge_enters);
 
-  pid = fork();
-  if (pid < 0)
-  {
-    shared->exit_code = 1;
-    process_error();
-  }
-  else if (pid == 0)
-    soudce(argc, argv, file_ptr);
-  
+	
+	sem_wait(print);
+	srk->IMM_CHECKS+=1;
+	vypis_imm(3);		//checks
+	sem_post(print);
 
-  sem_wait(MAIN_PROC_SEM);
+	if(srk->judge_waits_flag == 1 && srk->IMM_ENTERS == srk->IMM_CHECKS ){
+	srk->judge_waits_flag = 0;
+	sem_post(judge_waits);
+	}
+	
+	
+	
+	sem_wait(judge_confirms);
+	srk->judge_confirms_counter-=1;
+	if(srk->judge_confirms_counter > 0){
+		sem_post(judge_confirms);
+	}
+	
+	
+	
 
-  
-  file_close(file_ptr);
-  semaphore_destruct();
-  
-  if(shared->exit_code == 1)
-  {
-    struct_unmap();
-    return 1;
-  }
+	sem_wait(print);
+	vypis_imm(4);		//wants certificate
+	sem_post(print);
 
-  struct_unmap();
-  return 0;
+
+	srand(time(NULL));
+	usleep((rand() % IT)*1000);
+
+	sem_wait(print);
+	vypis_imm(5);		//got certificate
+	sem_post(print);
+	
+	sem_wait(judge_enters);
+	sem_wait(print);
+	srk->IMM_LEAVES+=1;
+	vypis_imm(6);		//leaves
+	sem_post(print);
+	sem_post(judge_enters);
+
+	zkouska();
+	exit (0);
+}
+
+void generovani (){
+	pid_t imm;
+	for (int f = 0 ; f < PI; f++ ){
+	srand(time(NULL));
+	usleep((rand() % IG)*1000);
+	imm = fork();
+	if( imm == 0 ){
+		immigrant();
+		}
+	}
+	zkouska();
+	exit (0);
+}
+
+void judge (){
+	int vlajka;
+	while(srk->registered_imms < PI){
+
+		srand(time(NULL));
+		usleep((rand() % JG)*1000);
+		
+
+		sem_wait(print);
+		vypis_j(1);			//wants to enter
+		sem_post(print);
+		
+		sem_wait(judge_enters);
+
+		sem_wait(print);
+		vypis_j(2);			//enters
+		sem_post(print);
+		
+		
+																	
+
+		if(srk->IMM_ENTERS != srk->IMM_CHECKS ){
+				sem_wait(print);
+				vypis_j(3);		//waits for imm
+				sem_post(print);
+				srk->judge_waits_flag=1;
+				sem_wait(judge_waits);
+			}
+			
+				
+		sem_wait(print);
+		vypis_j(4);			//starts confirmation
+		sem_post(print);
+		
+		
+		srand(time(NULL));
+		usleep((rand() % JT)*1000);
+
+		srk->judge_confirms_counter += srk->NC;
+		if(srk->NC != 0){
+			vlajka = 1;
+		}
+		srk->registered_imms = srk->IMM_CHECKS;
+
+		sem_wait(print);
+		vypis_j(5);			//ends confirmation
+		sem_post(print);
+		
+		if( vlajka == 1){
+		sem_post(judge_confirms);
+		vlajka = 0;
+		}
+
+
+		srand(time(NULL));
+		usleep((rand() % JT)*1000);
+
+		sem_wait(print);
+		vypis_j(6);			//leaves
+		sem_post(print);
+
+		sem_post(judge_enters);
+		
+	}
+	
+	sem_wait(print);
+	vypis_j(7);			//finishes
+	sem_post(print);
+	
+
+	zkouska();
+	exit (0);
+}
+
+int main( int argc, char * argv[] ){
+	
+	if (argc!=6){           
+        fprintf(stderr,"error: invalid arguments \n");
+        return 1;
+        }
+	
+	int letter = control_letters( argv );
+	if (letter == 1){
+		fprintf(stderr,"error: invalid arguments \n");
+		return 1;
+    }	
+
+	for (int fr = 1; fr < 6; fr++){
+		if( atoi(argv[fr]) != atof(argv[fr])  ){
+			fprintf(stderr,"error: invalid arguments \n");
+        	return 1;
+		}
+	}
+
+	PI = atoi(argv[1]);
+	IG = atoi(argv[2]) + 1; 
+	JG = atoi(argv[3]) + 1; 
+	IT = atoi(argv[4]) + 1; 
+	JT = atoi(argv[5]) + 1; 
+	if ( PI < 1){
+	fprintf(stderr,"error: invalid arguments \n");
+	return 1;
+	}
+
+	if ( IG < 1 || IG > 2001 || JG < 1 || JG > 2001 || IT < 1 || IT > 2001 || JT < 1 || JT > 2001 ) { 
+	fprintf(stderr,"error: invalid arguments \n"); 
+	return 1; 
+	}
+
+
+	srk = mmap(NULL, 14*sizeof(int), PROT_READ|PROT_WRITE, MAP_SHARED|MAP_ANONYMOUS, -1, 0);
+	if (srk == MAP_FAILED){
+		dtor();
+		fprintf(stderr,"error: Mapping failed \n");
+		return 1;
+	}
+	srk->dead = 0;
+	srk->A = 0;
+
+	file = fopen("proj2.out","w");
+	setbuf(file, NULL);
+
+	sem1 = sem_open("xstepa64_main_waits", O_CREAT, 0666, 0);
+		if( sem1 == SEM_FAILED ){
+			dtor();
+			sem_dtor();
+			fprintf(stderr,"error: sem_open(`xstepa64_main_waits`) failed \n");
+			return 1;
+		}
+	print = sem_open("xstepa64_sem_print", O_CREAT, 0666, 1);
+		if( print == SEM_FAILED ){
+		dtor();
+		sem_dtor();
+		fprintf(stderr,"error: sem_open(`xstepa64_sem_print`) failed \n");
+		return 1;
+		}
+	judge_enters = sem_open("xstepa64_judge_enters", O_CREAT, 0666, 1);
+		if( judge_enters == SEM_FAILED ){
+		dtor();
+		sem_dtor();
+		fprintf(stderr,"error: sem_open(`xstepa64_judge_enters`) failed \n");
+		return 1;
+		}
+	judge_waits = sem_open("xstepa64_judge_waits", O_CREAT, 0666, 0);
+		if( judge_waits == SEM_FAILED ){
+		dtor();
+		sem_dtor();
+		fprintf(stderr,"error: sem_open(`xstepa64_judge_waits`) failed \n");
+		return 1;
+		}
+	judge_confirms = sem_open("xstepa64_judge_confirms", O_CREAT, 0666, 0);
+		if( judge_confirms == SEM_FAILED ){
+		dtor();
+		sem_dtor();
+		fprintf(stderr,"error: sem_open(`xstepa64_judge_confirms`) failed \n");
+		return 1;
+		}
+
+	pid_t child = fork();
+	if (child == 0){
+		generovani();
+	}
+
+	
+	child = fork();
+	if (child == 0){
+	judge ();
+	}
+	
+
+	dtor();
+	sem_dtor();
+
+	return 0;
 }
